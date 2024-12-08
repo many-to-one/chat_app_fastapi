@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.local
+.env.*.local
+.vscode/
+*.log
+*.pot
+*.swp
+logs/
