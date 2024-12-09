@@ -87,10 +87,6 @@ async def websocket_endpoint(
 
     await manager.connect(websocket, client_id)
 
-    if obj and obj.chat_messages:
-        for message in obj.chat_messages:
-            await manager.send_personal_message(f"New message from Client #{sender_id}: {message.message}", websocket)
-
     try:
         while True:
             # Receive message from client
