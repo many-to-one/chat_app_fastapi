@@ -1,9 +1,18 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import false, text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 
 from db.db import Base
+
+
+chat_users = Table(
+    'chat_users',
+    Base.metadata,
+    Column('chat_id', ForeignKey('chat.id', ondelete="CASCADE"), primary_key=True),
+    Column('user_id', ForeignKey('users.id', ondelete="CASCADE"), primary_key=True)
+)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -19,16 +28,18 @@ class User(Base):
     access_token = Column(String, nullable=True)
     refresh_token = Column(String, nullable=True)
 
-    sent_chats = relationship(
+    chats = relationship(
         "Chat",
-        foreign_keys="[Chat.sender_id]",
-        back_populates="sender"
+        secondary=chat_users,
+        back_populates="participants"
     )
-    received_chats = relationship(
-        "Chat",
-        foreign_keys="[Chat.receiver_id]",
-        back_populates="receiver"
+
+    messages = relationship(
+        "Message",
+        foreign_keys="[Message.user_id]",
+        back_populates="user"
     )
+
 
 
 class Chat(Base):
@@ -37,33 +48,36 @@ class Chat(Base):
     id = Column(Integer, primary_key=True, index=True)
     sender_id = Column(ForeignKey("users.id", ondelete="CASCADE"))
     receiver_id = Column(ForeignKey("users.id", ondelete="CASCADE"))
-    message = Column(String, nullable=True)
+    # messages = Column(String, nullable=True)
 
-    sender = relationship(
+    participants = relationship(
         "User",
-        foreign_keys=[sender_id],
-        back_populates="sent_chats"
+        secondary=chat_users,
+        back_populates="chats"
     )
-    receiver = relationship(
-        "User",
-        foreign_keys=[receiver_id],
-        back_populates="received_chats"
-    )
-    chat_messages = relationship(
+
+    messages = relationship(
         "Message",
         foreign_keys="[Message.chat_id]",
-        back_populates="messages"
+        back_populates="chat"
     )
 
 
 class Message(Base):
     __tablename__ = "message"
 
-    message = Column(String, primary_key=True, nullable=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True) 
+    message = Column(String, nullable=True) 
     chat_id = Column(ForeignKey("chat.id", ondelete="CASCADE")) 
+    user_id = Column(ForeignKey("users.id", ondelete="CASCADE")) 
+    read = Column(Boolean, server_default=false())
 
-    messages = relationship(
+    chat = relationship(
         "Chat",
-        foreign_keys=[chat_id],
-        back_populates="chat_messages"
+        back_populates="messages"
+    )
+
+    user = relationship(
+        "User",
+        back_populates="messages"
     )

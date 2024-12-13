@@ -4,11 +4,12 @@ from fastapi.security.oauth2 import OAuth2PasswordBearer, OAuth2PasswordRequestF
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy import func, update
 
 from db.db import get_db
-from models.users import Chat
+from models.users import Chat, Message, chat_users
 from schemas.auth import TokenResponse, UserCreateForm, UserLoginForm
-from schemas.chat import ChatBase
+from schemas.chat import ChatBase, MessageBase
 from security.security import get_password_hash, oauth2_scheme
 from orm.orm import OrmService
 
@@ -16,20 +17,16 @@ from orm.orm import OrmService
 router = APIRouter(tags=["Chat"], prefix="/chat")
 
 
-@router.get("/new_chat", status_code=status.HTTP_200_OK, response_model=ChatBase)
-async def create_chat(
-    sender_id: int,
-    receiver_id: int,
+@router.get("/all_chats", status_code=status.HTTP_200_OK, response_model=list[ChatBase])
+async def all_chats(
     db: AsyncSession = Depends(get_db)
 ):
-    chat_form = {
-        "sender_id": sender_id,
-        "receiver_id": receiver_id,
-        "message": "Hello",
-    }
-    __orm = OrmService(db)
+    result = await db.execute(
+        select(Chat).options(selectinload(Chat.messages))  # Eagerly load the messages
+    )
+    chat_list = result.scalars().all()
 
-    return await __orm.create(model=Chat, form=chat_form)
+    return [chat.model_dump() for chat in [ChatBase.from_orm(chat) for chat in chat_list]]
 
 
 @router.get("/get_chat", status_code=status.HTTP_200_OK, response_model=list[ChatBase])
@@ -38,19 +35,28 @@ async def get_chat(
     receiver_id: int,
     db: AsyncSession = Depends(get_db)
 ):
+    __orm = OrmService(db)
+
+    # Make message read=True by receiver
+    await db.execute(
+        update(Message)
+        .where(Message.user_id == receiver_id)
+        .values(read = True)
+    )
+    await db.commit()
+
+    # Get chat conversation
     result = await db.execute(
-                select(Chat)
-                .filter(
-                    Chat.sender_id == sender_id, 
-                    Chat.receiver_id == receiver_id,
-                )
-                .options(
-                    selectinload(Chat.chat_messages)  # Eager load the related messages
-                )
-            )
-    chat_list = result.scalars().all() 
+        select(Chat)
+        .filter(Chat.sender_id == sender_id, Chat.receiver_id == receiver_id)
+        .options(selectinload(Chat.messages))  # Eagerly load 'messages'
+    )
+    chat_list = result.scalars().all()
+
+    print('************** chat_list ****************', chat_list)
 
     return [ChatBase.from_orm(chat) for chat in chat_list]
+
 
 
 @router.get("/delete_all_chats", status_code=status.HTTP_200_OK)
