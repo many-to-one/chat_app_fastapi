@@ -19,6 +19,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, index=True)
+    photo = Column(String, nullable=True)
     email = Column(String, unique=True, index=True)
     password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
@@ -59,7 +60,8 @@ class Chat(Base):
     messages = relationship(
         "Message",
         foreign_keys="[Message.chat_id]",
-        back_populates="chat"
+        back_populates="chat",
+        order_by="Message.id" 
     )
 
 

@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel, EmailStr
 
 class UserCreateForm(BaseModel):
@@ -14,6 +15,7 @@ class UserLoginForm(BaseModel):
 class TokenResponse(BaseModel):
     id: int
     username: str
+    photo: Optional[str] = None
     access_token: str
     refresh_token: str
 

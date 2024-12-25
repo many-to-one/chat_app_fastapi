@@ -4,7 +4,7 @@ from fastapi.security.oauth2 import OAuth2PasswordBearer, OAuth2PasswordRequestF
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import func, update
+from sqlalchemy import func, update, or_
 
 from db.db import get_db
 from models.users import Chat, Message, chat_users
@@ -47,10 +47,15 @@ async def get_chat(
 
     # Get chat conversation
     result = await db.execute(
-        select(Chat)
-        .filter(Chat.sender_id == sender_id, Chat.receiver_id == receiver_id)
-        .options(selectinload(Chat.messages))  # Eagerly load 'messages'
+    select(Chat)
+    .filter(
+        or_(
+            (Chat.sender_id == sender_id) & (Chat.receiver_id == receiver_id),
+            (Chat.sender_id == receiver_id) & (Chat.receiver_id == sender_id)
+        )
     )
+    .options(selectinload(Chat.messages))  # Eagerly load 'messages'
+)
     chat_list = result.scalars().all()
 
     print('************** chat_list ****************', chat_list)

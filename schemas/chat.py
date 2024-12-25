@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 class MessageBase(BaseModel):
+    id: int
     message: str
     chat_id: int
     user_id: Optional[int]

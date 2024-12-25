@@ -55,6 +55,7 @@ async def get_tokens_pair(db, id):
     response = TokenResponse(
         id=user.id,
         username=user.username,
+        photo=user.photo,
         email=user.email,
         access_token=access_token,
         refresh_token=refresh_token,
