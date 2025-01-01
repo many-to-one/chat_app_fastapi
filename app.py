@@ -93,72 +93,78 @@ async def websocket_endpoint(
             # Receive message from client
             data = await websocket.receive_json()  # Expecting JSON with sender, receiver, and message
             print('SENDED DATA', data)
-            sender_id = data["sender_id"]
-            receiver_id = data["receiver_id"]
-            message = data["message"]
 
-            result = await db.execute(
-                select(Chat)
-                .join(chat_users)
-                .filter(chat_users.c.user_id.in_([sender_id, receiver_id]))
-                .group_by(Chat.id)
-                .having(func.count(chat_users.c.user_id) == 2)  # Ensure both users exist in the same chat
-                .options(selectinload(Chat.messages))
-            )
-            obj = result.scalars().first()
-
-            if obj is None:
-                 # Save message in the database
-                chat_form = {
-                    "sender_id": sender_id,
-                    "receiver_id": receiver_id,
-                    "messages": [Message(message=message)]
-                }
-                __orm = OrmService(db)
-                new_chat = await __orm.create(model=Chat, form=chat_form)
-                await db.execute(
-                    chat_users.insert().values([
-                        {"chat_id": new_chat.id, "user_id": sender_id},
-                        {"chat_id": new_chat.id, "user_id": receiver_id}
-                    ])
-                )
-                await db.commit()
-                # await db.refresh(new_chat)
-
-                # chat = new_chat
-                obj = new_chat
-
-                print('************** obj **************', obj)
-
-            # else:
-            #     if obj and obj.chat_messages:
-            #         for message in obj.chat_messages:
-            #             await manager.send_personal_message(f"New message from Client #{sender_id}: {message.message}", websocket)
-
-
-            # Notify the sender
-            await manager.send_personal_message(f"Message sent to Client #{receiver_id}", websocket)
-
-            # Send message to the receiver if connected
-            receiver_ws = manager.get_connection(receiver_id)
-            if receiver_ws:
-                await manager.send_personal_message(f"New message from Client #{sender_id}: {message}", receiver_ws)
+            if data["sender_id"] == None:
+                await manager.send_personal_message(f'{data['id']} is online', websocket)
 
             else:
-                # Optionally handle offline messaging
-                mess = await manager.send_personal_message(f"Client #{receiver_id} is offline. Message saved.", websocket)
-                new_message = Message(
-                    message=message, 
-                    chat_id=obj.id,
-                    user_id=sender_id,
-                    read=False,
-                    )
-                db.add(new_message)
-                await db.commit()
-                await db.refresh(new_message)
+                sender_id = data["sender_id"]
+                receiver_id = data["receiver_id"]
+                message = data["message"]
 
-            # Broadcast message to everyone (optional)
-            await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}")
+                result = await db.execute(
+                    select(Chat)
+                    .join(chat_users)
+                    .filter(chat_users.c.user_id.in_([sender_id, receiver_id]))
+                    .group_by(Chat.id)
+                    .having(func.count(chat_users.c.user_id) == 2)  # Ensure both users exist in the same chat
+                    .options(selectinload(Chat.messages))
+                )
+                obj = result.scalars().first()
+
+                if obj is None:
+                    # Save message in the database
+                    chat_form = {
+                        "sender_id": sender_id,
+                        "receiver_id": receiver_id,
+                        "messages": [Message(message=message)]
+                    }
+                    __orm = OrmService(db)
+                    new_chat = await __orm.create(model=Chat, form=chat_form)
+                    await db.execute(
+                        chat_users.insert().values([
+                            {"chat_id": new_chat.id, "user_id": sender_id},
+                            {"chat_id": new_chat.id, "user_id": receiver_id}
+                        ])
+                    )
+                    await db.commit()
+                    # await db.refresh(new_chat)
+
+                    # chat = new_chat
+                    obj = new_chat
+
+                    print('************** obj **************', obj)
+
+                # else:
+                #     if obj and obj.chat_messages:
+                #         for message in obj.chat_messages:
+                #             await manager.send_personal_message(f"New message from Client #{sender_id}: {message.message}", websocket)
+
+
+                # Notify the sender
+                await manager.send_personal_message(f"Message sent to Client #{receiver_id}", websocket)
+
+                # Send message to the receiver if connected
+                receiver_ws = manager.get_connection(receiver_id)
+                print('******* receiver_ws *******', receiver_ws)
+                if receiver_ws:
+                    await manager.send_personal_message(f"New message from Client #{sender_id}: {message}", receiver_ws)
+
+                else:
+                    # Optionally handle offline messaging
+                    mess = await manager.send_personal_message(f"Client #{receiver_id} is offline. Message saved.", websocket)
+                    new_message = Message(
+                        message=message, 
+                        chat_id=obj.id,
+                        user_id=sender_id,
+                        read=False,
+                        )
+                    db.add(new_message)
+                    await db.commit()
+                    await db.refresh(new_message)
+
+                # Broadcast message to everyone (optional)
+                await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}")
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
