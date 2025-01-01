@@ -7,10 +7,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    expose:
+      - "5435"
     ports:
-      - "5432:5432"
+      - "5435:5435"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    command: -p 5435
     networks:
       - db-net
     healthcheck:

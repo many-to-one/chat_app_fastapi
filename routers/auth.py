@@ -2,6 +2,8 @@ from fastapi import APIRouter, status, Depends, Response, HTTPException
 from fastapi.security.oauth2 import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+
 
 from db.db import get_db
 from models.users import User
@@ -16,15 +18,32 @@ router = APIRouter(tags=["Auth"], prefix="/auth")
 
 @router.post("/sing_up", status_code=status.HTTP_201_CREATED, response_model=UserCreateForm)
 async def sign_up(
-        user_form: UserCreateForm = Depends(UserCreateForm), 
+        user_form: UserCreateForm, # = Depends(UserCreateForm), 
         db: AsyncSession = Depends(get_db)
     ):
+    print('user_form', user_form)
     hashed_password = get_password_hash(user_form.password)
     user_data = user_form.dict() 
     user_data['password'] = hashed_password
 
     __orm = OrmService(db)
-    new_user = await __orm.create(model=User, form=user_data)
+#    new_user = await __orm.create(model=User, form=user_data)
+
+    try:
+        new_user = await __orm.create(model=User, form=user_data)
+        return new_user
+    except IntegrityError as e:
+        # Handle the case where the email already exists
+        if "ix_users_email" in str(e):  # This checks if the error is related to the unique constraint
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The email address is already registered."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An unexpected error occurred."
+            )
 
     return new_user
 

@@ -49,7 +49,7 @@ class Chat(Base):
     id = Column(Integer, primary_key=True, index=True)
     sender_id = Column(ForeignKey("users.id", ondelete="CASCADE"))
     receiver_id = Column(ForeignKey("users.id", ondelete="CASCADE"))
-    # messages = Column(String, nullable=True)
+    messages = Column(String, nullable=True)
 
     participants = relationship(
         "User",

@@ -1,0 +1,1 @@
+ALTER TABLE message ALTER COLUMN message DROP NOT NULL;
