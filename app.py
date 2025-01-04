@@ -1,3 +1,4 @@
+import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -24,7 +25,6 @@ app = FastAPI()
 
 origins = [
     "http://localhost:8081",  # React app running locally
-    # Add other origins as needed
 ]
 
 app.add_middleware(
@@ -51,15 +51,25 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, chat_id: int):
         await websocket.accept()
         self.active_connections[chat_id] = websocket
-        print('************* WEBSOCCET IS CONNECTED ***************')
+        # self.active_connections[user_id] = websocket
+        # print('************* WEBSOCCET IS CONNECTED ***************')
 
     def disconnect(self, websocket: WebSocket):
         user_id = next((uid for uid, ws in self.active_connections.items() if ws == websocket), None)
         if user_id:
             del self.active_connections[user_id]
 
+
+    async def is_user_online(self, user_id: str) -> bool:
+        return user_id in self.active_connections
+
     async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
+        if message.startswith == 'chat_onopen':
+            await websocket.send_text(message)
+        if message.startswith == 'chat_onclose':
+            await websocket.send_text(message)
+        else:
+            await websocket.send_text(message)
 
     async def broadcast(self, message: str):
         for connection in self.active_connections.values():
@@ -77,10 +87,10 @@ async def index(request: Request):
 
 
 
-@app.websocket("/ws/{client_id}")
+@app.websocket("/ws/{client_id}/{sender_id}")
 async def websocket_endpoint(
     websocket: WebSocket, 
-    # sender_id: int, 
+    sender_id: int, 
     # receiver_id: int,
     client_id: int,
     db: AsyncSession = Depends(get_db)
@@ -94,13 +104,17 @@ async def websocket_endpoint(
             data = await websocket.receive_json()  # Expecting JSON with sender, receiver, and message
             print('SENDED DATA', data)
 
-            if data["sender_id"] == None:
-                await manager.send_personal_message(f'{data['id']} is online', websocket)
+            if data["message"] == "chat_onopen":
+                await manager.broadcast(f'chat_onopen {data['sender_id']} is active')
 
-            else:
+            # If use 'else' - will be send a message 'chat_onopen' or 'chat_onclose'
+            # But if use 'elif...' will be send only real user's message
+            elif data["message"] != "chat_onopen" and data["message"] != "chat_onclose":
                 sender_id = data["sender_id"]
                 receiver_id = data["receiver_id"]
                 message = data["message"]
+
+                # print(' ################ SENDED USER MESSAGE ################ ', message)
 
                 result = await db.execute(
                     select(Chat)
@@ -117,7 +131,7 @@ async def websocket_endpoint(
                     chat_form = {
                         "sender_id": sender_id,
                         "receiver_id": receiver_id,
-                        "messages": [Message(message=message)]
+                        "messages": [Message(message=message, read=True)]
                     }
                     __orm = OrmService(db)
                     new_chat = await __orm.create(model=Chat, form=chat_form)
@@ -128,31 +142,11 @@ async def websocket_endpoint(
                         ])
                     )
                     await db.commit()
-                    # await db.refresh(new_chat)
 
-                    # chat = new_chat
                     obj = new_chat
 
-                    print('************** obj **************', obj)
-
-                # else:
-                #     if obj and obj.chat_messages:
-                #         for message in obj.chat_messages:
-                #             await manager.send_personal_message(f"New message from Client #{sender_id}: {message.message}", websocket)
-
-
-                # Notify the sender
-                await manager.send_personal_message(f"Message sent to Client #{receiver_id}", websocket)
-
-                # Send message to the receiver if connected
-                receiver_ws = manager.get_connection(receiver_id)
-                print('******* receiver_ws *******', receiver_ws)
-                if receiver_ws:
-                    await manager.send_personal_message(f"New message from Client #{sender_id}: {message}", receiver_ws)
-
                 else:
-                    # Optionally handle offline messaging
-                    mess = await manager.send_personal_message(f"Client #{receiver_id} is offline. Message saved.", websocket)
+                    # Handle offline messaging
                     new_message = Message(
                         message=message, 
                         chat_id=obj.id,
@@ -168,18 +162,4 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        await manager.broadcast(f"Client #{obj.id} left the chat")
-
-
-
-# @app.websocket("/ws/{client_id}")
-# async def websocket_endpoint(websocket: WebSocket, client_id: int):
-#     await manager.connect(websocket)
-#     try:
-#         while True:
-#             data = await websocket.receive_text()
-#             await manager.send_personal_message(f"You wrote: {data}", websocket)
-#             await manager.broadcast(f"Client #{client_id} says: {data}")
-#     except WebSocketDisconnect:
-#         manager.disconnect(websocket)
-#         await manager.broadcast(f"Client #{client_id} left the chat")
+        await manager.broadcast(f"Client #{sender_id} left the chat")
