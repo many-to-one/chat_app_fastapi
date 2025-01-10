@@ -16,6 +16,7 @@ class ChatBase(BaseModel):
     sender_id: int
     receiver_id: int
     messages: list[MessageBase]
+    unread_count: int
 
     class Config:
         from_attributes = True

@@ -58,9 +58,49 @@ async def get_chat(
 )
     chat_list = result.scalars().all()
 
-    print('************** chat_list ****************', chat_list)
+    return [ChatBase.from_orm(chat) for chat in chat_list]
+
+
+
+# The last message of the chat
+@router.get("/get_last_mess", status_code=status.HTTP_200_OK, response_model=list[ChatBase])
+async def get_chat(
+    sender_id: int,
+    receiver_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+
+    result = await db.execute(
+    select(Chat)
+    .filter(
+        or_(
+            (Chat.sender_id == sender_id) & (Chat.receiver_id == receiver_id),
+            (Chat.sender_id == receiver_id) & (Chat.receiver_id == sender_id)
+        )
+    )
+    .options(selectinload(Chat.messages))  # Eagerly load 'messages'
+)
+    chat_list = result.scalars().all()
+
+    # Extract the last message for each chat
+    for chat in chat_list:
+        if chat.messages:
+            chat.messages = sorted(chat.messages, key=lambda msg: msg.id, reverse=True)[:1]
+            chat.unread_count = 0
+            for message in chat.messages:
+                if message.read == False:
+                    chat.unread_count += 1
+        else:
+            chat.messages = []
+            chat.unread_count = 0
+            chat.read = False
+
+
+    # print(' ############## UNREAD COUNT ############## ', chat.unread_count)
+
 
     return [ChatBase.from_orm(chat) for chat in chat_list]
+
 
 
 

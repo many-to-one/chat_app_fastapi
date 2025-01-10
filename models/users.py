@@ -50,6 +50,7 @@ class Chat(Base):
     sender_id = Column(ForeignKey("users.id", ondelete="CASCADE"))
     receiver_id = Column(ForeignKey("users.id", ondelete="CASCADE"))
     messages = Column(String, nullable=True)
+    unread_count = Column(Integer, nullable=True, default=0)
 
     participants = relationship(
         "User",

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, status, Depends, Response, HTTPException
 from fastapi.security.oauth2 import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from cachetools import TTLCache
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +16,8 @@ from orm.orm import OrmService
 
 router = APIRouter(tags=["Auth"], prefix="/auth")
 
+# In-memory cache with a max size of 1 and TTL of 10 minutes (600 seconds)
+cache = TTLCache(maxsize=1, ttl=600)
 
 @router.post("/sing_up", status_code=status.HTTP_201_CREATED, response_model=UserCreateForm)
 async def sign_up(
@@ -31,6 +34,7 @@ async def sign_up(
 
     try:
         new_user = await __orm.create(model=User, form=user_data)
+        cache.pop("all_users", None)
         return new_user
     except IntegrityError as e:
         # Handle the case where the email already exists
