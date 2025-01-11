@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 
@@ -7,6 +8,7 @@ class MessageBase(BaseModel):
     chat_id: int
     user_id: Optional[int]
     read: bool
+    created_at: Optional[datetime] 
 
     class Config:
         from_attributes = True

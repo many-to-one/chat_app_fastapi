@@ -71,6 +71,7 @@ class Message(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True) 
     message = Column(String, nullable=True) 
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"), nullable=False)
     chat_id = Column(ForeignKey("chat.id", ondelete="CASCADE")) 
     user_id = Column(ForeignKey("users.id", ondelete="CASCADE")) 
     read = Column(Boolean, server_default=false())

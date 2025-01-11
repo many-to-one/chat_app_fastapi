@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends
 from fastapi.responses import HTMLResponse
@@ -93,12 +94,28 @@ async def index(request: Request):
 async def websocket_endpoint(
     websocket: WebSocket, 
     sender_id: int, 
-    # receiver_id: int,
     client_id: int,
+    token: str,
     db: AsyncSession = Depends(get_db)
 ):
 
-    await manager.connect(websocket, sender_id)
+    # Validate token and authenticate user
+    if token:
+        current_user = await get_current_user(token, db)
+
+        if current_user:
+            print(' *********** WEBSOCKET INDEX CURRENT USER ID *********** ', current_user.id)
+            await users_manager.connect(websocket, current_user.id)
+
+        else:
+            await websocket.close(code=1008)  # Close WebSocket if unauthorized
+            await users_manager.broadcast("401 Unauthorized")
+            return
+    else:
+        await websocket.close(code=1008)  # Close WebSocket if no token
+        await users_manager.broadcast("No token")
+        return
+    # await manager.connect(websocket, sender_id)
 
     try:
         while True:
@@ -158,12 +175,14 @@ async def websocket_endpoint(
                         obj = new_chat
 
                     else:
+                        print(' ################ I"M HERE ################ ', message)
                         # Handle messaging
                         new_message = Message(
                             message=message, 
                             chat_id=obj.id,
                             user_id=sender_id,
                             read=is_active,
+                            created_at=datetime.utcnow()
                             )
                         db.add(new_message)
                         await db.commit()
