@@ -105,15 +105,15 @@ async def websocket_endpoint(
 
         if current_user:
             print(' *********** WEBSOCKET INDEX CURRENT USER ID *********** ', current_user.id)
-            await users_manager.connect(websocket, current_user.id)
+            await manager.connect(websocket, current_user.id)
 
         else:
             await websocket.close(code=1008)  # Close WebSocket if unauthorized
-            await users_manager.broadcast("401 Unauthorized")
+            await manager.broadcast("401 Unauthorized")
             return
     else:
         await websocket.close(code=1008)  # Close WebSocket if no token
-        await users_manager.broadcast("No token")
+        await manager.broadcast("No token")
         return
     # await manager.connect(websocket, sender_id)
 
@@ -176,6 +176,7 @@ async def websocket_endpoint(
 
                     else:
                         print(' ################ I"M HERE ################ ', message)
+                        await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}, receiver_active: {is_active}")
                         # Handle messaging
                         new_message = Message(
                             message=message, 
@@ -188,7 +189,7 @@ async def websocket_endpoint(
                         await db.commit()
                         await db.refresh(new_message)
 
-                    await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}, receiver_active: {is_active}")
+                        # await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}, receiver_active: {is_active}")
 
             except WebSocketDisconnect:
                 print(f"WebSocket client_id {client_id} disconnected.")
