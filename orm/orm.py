@@ -12,7 +12,7 @@ class OrmService:
 
     
     async def login(self, form):
-        # print('--login--form--', form.username)
+        print('------------------LOGIN--FORM--------------', form.username)
         result = await self.db.execute(select(User).filter(User.username == form.username))  # Await the query execution
         user = result.scalar_one_or_none() 
         if not user:

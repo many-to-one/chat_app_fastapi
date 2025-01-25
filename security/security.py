@@ -84,7 +84,7 @@ async def get_new_access_token(refresh_token: str):
 async def create_access_token(data: dict):
 
     payload = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=1600)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=5) #1600
     payload.update({"exp": expire}) 
 
     return jwt.encode(payload, os.getenv("SECRET_KEY"), algorithm=os.getenv("algorithm"))

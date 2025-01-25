@@ -61,6 +61,7 @@ async def login(
     
     __orm = OrmService(db)
     login_user = await __orm.login(form=user_form)
+    print('********login_user***********', login_user)
     return login_user
 
 
