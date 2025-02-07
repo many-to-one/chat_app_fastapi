@@ -1,23 +1,25 @@
 from datetime import datetime
 import json
+import redis
+import os
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 
-from schemas.users import UserBase
-from security.security import get_current_user
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import func
 
+from schemas.users import UserBase
+from security.security import get_current_user
 from models.users import Chat, Message, chat_users
 from orm.orm import OrmService
 from routers import auth, users, chat
 from db.db import get_db
 
-import os
 
 ########## SECRETE KEY LOGIC ##########
 # secret_key = os.urandom(32).hex()
@@ -44,6 +46,21 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(chat.router)
 
+
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = os.getenv("REDIS_PORT")
+
+redis_client = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), decode_responses=True)
+
+@app.post("/set/")
+async def set_value(key: str, value: str):
+    redis_client.set(key, value)
+    return {"message": f"Stored {key} = {value}"}
+
+@app.get("/get/")
+async def get_value(key: str):
+    value = redis_client.get(key)
+    return {"key": key, "value": value}
 
 
 class ConnectionManager:
@@ -107,112 +124,114 @@ async def websocket_endpoint(
             print(' *********** WEBSOCKET INDEX CURRENT USER ID *********** ', current_user.id)
             await manager.connect(websocket, current_user.id)
 
+            try:
+                while True:
+
+                    try:
+                        data = await websocket.receive_json()
+                        # print('SENDED DATA:', data)
+
+                            # Broadcast "chat_onopen" message
+                        if data["message"] == "chat_onopen":
+                            await manager.broadcast(f"chat_onopen {data['sender_id']} is active")
+                            is_active = await manager.is_user_online(data['receiver_id'])
+                            # print(' ################ chat_onopen is_active ################ ', is_active)
+
+                        elif data["message"] == "receiver_active":
+                            # print(' ################ receiver_active ################ ', data)
+                            await manager.broadcast(f"is_active")
+
+                        # If use 'else' - will be send a message 'chat_onopen' or 'chat_onclose'
+                        # But if use 'elif...' will be send only real user's message
+                        elif data["message"] != "chat_onopen" and data["message"] != "chat_onclose":
+                            sender_id = data["sender_id"]
+                            receiver_id = data["receiver_id"]
+                            is_active = await manager.is_user_online(receiver_id)
+                            # print(' ################ send is_active ################ ', is_active)
+                            message = data["message"]
+
+                            # print(' ################ SENDED USER MESSAGE ################ ', message)
+
+                            result = await db.execute(
+                                select(Chat)
+                                .join(chat_users)
+                                .filter(chat_users.c.user_id.in_([sender_id, receiver_id]))
+                                .group_by(Chat.id)
+                                .having(func.count(chat_users.c.user_id) == 2)  # Ensure both users exist in the same chat
+                                .options(selectinload(Chat.messages))
+                            )
+                            obj = result.scalars().first()
+
+                            if obj is None:
+                                # Save message in the database
+                                chat_form = {
+                                    "sender_id": sender_id,
+                                    "receiver_id": receiver_id,
+                                    "messages": [Message(message=message, read=is_active)]
+                                }
+                                __orm = OrmService(db)
+                                new_chat = await __orm.create(model=Chat, form=chat_form)
+                                await db.execute(
+                                    chat_users.insert().values([
+                                        {"chat_id": new_chat.id, "user_id": sender_id},
+                                        {"chat_id": new_chat.id, "user_id": receiver_id}
+                                    ])
+                                )
+                                await db.commit()
+
+                                obj = new_chat
+
+                            else:
+                                print(' ################ I"M HERE ################ ', message)
+                                print('################ token ################', token)
+                                # await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}, receiver_active: {is_active}")
+                                # Handle messaging
+                                new_message = Message(
+                                    message=message, 
+                                    chat_id=obj.id,
+                                    user_id=sender_id,
+                                    read=is_active,
+                                    created_at=datetime.utcnow()
+                                    )
+                                db.add(new_message)
+                                await db.commit()
+                                await db.refresh(new_message)
+
+                                await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}, receiver_active: {is_active}")
+
+                        else:
+                            await manager.broadcast("401 Unauthorized")
+                            # await websocket.close(code=1008)  # Close WebSocket if unauthorized
+                            # return
+
+                    except WebSocketDisconnect:
+                        print(f"WebSocket client_id {client_id} disconnected.")
+                        manager.disconnect(websocket)
+                        break
+                    except Exception as e:
+                        print(f"Error in WebSocket: {e}")
+                        await manager.broadcast("401 Unauthorized")
+                        await websocket.close()
+                        break
+
+
+            except WebSocketDisconnect:
+                manager.disconnect(websocket)
+                await manager.broadcast(f"Client #{sender_id} left the chat")
+
         else:
             await manager.broadcast("401 Unauthorized")
+            print('################ 401 Unauthorized ################')
             # await websocket.close(code=1008)  # Close WebSocket if unauthorized
             # return
     else:
+        print('################ No Token ################')
         await websocket.close(code=1008)  # Close WebSocket if no token
         await manager.broadcast("No token")
         return
     # await manager.connect(websocket, sender_id)
 
-    try:
-        while True:
-
-            try:
-                data = await websocket.receive_json()
-                print('SENDED DATA:', data)
-                current_user = await get_current_user(data["access_token"],  db)
-
-                if current_user:
-
-                    # Broadcast "chat_onopen" message
-                    if data["message"] == "chat_onopen":
-                        await manager.broadcast(f"chat_onopen {data['sender_id']} is active")
-                        is_active = await manager.is_user_online(data['receiver_id'])
-                        print(' ################ chat_onopen is_active ################ ', is_active)
-
-                    elif data["message"] == "receiver_active":
-                        print(' ################ receiver_active ################ ', data)
-                        # await manager.broadcast(f"is_active")
-
-                    # If use 'else' - will be send a message 'chat_onopen' or 'chat_onclose'
-                    # But if use 'elif...' will be send only real user's message
-                    elif data["message"] != "chat_onopen" and data["message"] != "chat_onclose":
-                        sender_id = data["sender_id"]
-                        receiver_id = data["receiver_id"]
-                        is_active = await manager.is_user_online(receiver_id)
-                        print(' ################ send is_active ################ ', is_active)
-                        message = data["message"]
-
-                        print(' ################ SENDED USER MESSAGE ################ ', message)
-
-                        result = await db.execute(
-                            select(Chat)
-                            .join(chat_users)
-                            .filter(chat_users.c.user_id.in_([sender_id, receiver_id]))
-                            .group_by(Chat.id)
-                            .having(func.count(chat_users.c.user_id) == 2)  # Ensure both users exist in the same chat
-                            .options(selectinload(Chat.messages))
-                        )
-                        obj = result.scalars().first()
-
-                        if obj is None:
-                            # Save message in the database
-                            chat_form = {
-                                "sender_id": sender_id,
-                                "receiver_id": receiver_id,
-                                "messages": [Message(message=message, read=is_active)]
-                            }
-                            __orm = OrmService(db)
-                            new_chat = await __orm.create(model=Chat, form=chat_form)
-                            await db.execute(
-                                chat_users.insert().values([
-                                    {"chat_id": new_chat.id, "user_id": sender_id},
-                                    {"chat_id": new_chat.id, "user_id": receiver_id}
-                                ])
-                            )
-                            await db.commit()
-
-                            obj = new_chat
-
-                        else:
-                            print(' ################ I"M HERE ################ ', message)
-                            # await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}, receiver_active: {is_active}")
-                            # Handle messaging
-                            new_message = Message(
-                                message=message, 
-                                chat_id=obj.id,
-                                user_id=sender_id,
-                                read=is_active,
-                                created_at=datetime.utcnow()
-                                )
-                            db.add(new_message)
-                            await db.commit()
-                            await db.refresh(new_message)
-
-                            await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}, receiver_active: {is_active}")
-
-                    else:
-                        await manager.broadcast("401 Unauthorized")
-                        # await websocket.close(code=1008)  # Close WebSocket if unauthorized
-                        # return
-
-            except WebSocketDisconnect:
-                print(f"WebSocket client_id {client_id} disconnected.")
-                manager.disconnect(websocket)
-                break
-            except Exception as e:
-                print(f"Error in WebSocket: {e}")
-                await manager.broadcast("401 Unauthorized")
-                await websocket.close()
-                break
-
-
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        await manager.broadcast(f"Client #{sender_id} left the chat")
+    
 
 
 
@@ -276,6 +295,32 @@ async def websocket_endpoint(
             print(' *********** WEBSOCKET CURRENT USER ID *********** ', current_user.id)
             await users_manager.connect(websocket, current_user.id)
 
+            try:
+                while True:
+                    # Wait for a message or event from the client
+                    data = await websocket.receive_json()  # Expecting JSON with sender, receiver, and message
+                    current_user = await get_current_user(data["access_token"],  db)
+
+                    if current_user:
+                        print(' ************** RECEIVED FOR INDEX DATA ************** ', data)
+                        await users_manager.broadcast(f"{data}")
+                    else:
+                        await users_manager.broadcast("401 Unauthorized")
+                        # await websocket.close(code=1008)  # Close WebSocket if unauthorized
+                        # return
+
+
+            except WebSocketDisconnect:
+                users_manager.disconnect(websocket)
+                await users_manager.broadcast(json.dumps({
+                    "message": f"{current_user.id} left chats area"
+                }))
+
+            except Exception as e:
+                print("WebSocket Error:", e)
+                await users_manager.broadcast("401 Unauthorized")
+                await websocket.close(code=1011)
+
         else:
             await users_manager.broadcast("401 Unauthorized")
             # await websocket.close(code=1008)  # Close WebSocket if unauthorized
@@ -285,31 +330,7 @@ async def websocket_endpoint(
         await users_manager.broadcast("No token")
         return
 
-    try:
-        while True:
-            # Wait for a message or event from the client
-            data = await websocket.receive_json()  # Expecting JSON with sender, receiver, and message
-            current_user = await get_current_user(data["access_token"],  db)
-
-            if current_user:
-                print(' ************** RECEIVED FOR INDEX DATA ************** ', data)
-                await users_manager.broadcast(f"{data}")
-            else:
-                await users_manager.broadcast("401 Unauthorized")
-                # await websocket.close(code=1008)  # Close WebSocket if unauthorized
-                # return
-
-
-    except WebSocketDisconnect:
-        users_manager.disconnect(websocket)
-        await users_manager.broadcast(json.dumps({
-            "message": f"{current_user.id} left chats area"
-        }))
-
-    except Exception as e:
-        print("WebSocket Error:", e)
-        await users_manager.broadcast("401 Unauthorized")
-        await websocket.close(code=1011)
+    
 
 
 

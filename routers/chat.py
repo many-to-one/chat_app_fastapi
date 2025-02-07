@@ -3,7 +3,7 @@ from fastapi.security.oauth2 import OAuth2PasswordBearer, OAuth2PasswordRequestF
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy import func, update, or_
 
 from db.db import get_db
@@ -33,6 +33,7 @@ async def all_chats(
 async def get_chat(
     sender_id: int,
     receiver_id: int,
+    count: int,
     db: AsyncSession = Depends(get_db)
 ):
     __orm = OrmService(db)
@@ -54,11 +55,17 @@ async def get_chat(
             (Chat.sender_id == receiver_id) & (Chat.receiver_id == sender_id)
         )
     )
-    .options(selectinload(Chat.messages))  # Eagerly load 'messages'
+    .options(selectinload(Chat.messages))
 )
     chat_list = result.scalars().all()
 
+    for chat in chat_list:
+        # print('##################### CHAT ID ####################', chat.id, count)
+        if chat.messages:
+            chat.messages = sorted(chat.messages, key=lambda msg: msg.id, reverse=True)[:count]  # Get last 100 messages
+
     return [ChatBase.from_orm(chat) for chat in chat_list]
+
 
 
 

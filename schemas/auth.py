@@ -20,6 +20,11 @@ class TokenResponse(BaseModel):
     refresh_token: str
 
 
+class NewAccessTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+
+
 class ChangePasswordForm(BaseModel):
     email: EmailStr
     old_password: str

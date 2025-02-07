@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from db.db import get_db
 from models.users import User
-from schemas.auth import TokenResponse, UserCreateForm, ChangePasswordForm
+from schemas.auth import NewAccessTokenResponse, TokenResponse, UserCreateForm, ChangePasswordForm
 from schemas.users import UserBase
 from security.security import get_new_access_token, get_password_hash, get_current_user, oauth2_scheme
 from orm.orm import OrmService
@@ -49,7 +49,7 @@ async def sign_up(
                 detail="An unexpected error occurred."
             )
 
-    return new_user
+    # return new_user
 
 
 @router.post("/login", status_code=status.HTTP_200_OK, response_model=TokenResponse)
@@ -61,17 +61,16 @@ async def login(
     
     __orm = OrmService(db)
     login_user = await __orm.login(form=user_form)
-    print('********login_user***********', login_user)
+    # print('********login_user***********', login_user)
     return login_user
 
 
-@router.get("/refresh_token", status_code=status.HTTP_200_OK, response_model=TokenResponse)
+@router.get("/refresh_token", status_code=status.HTTP_200_OK, response_model=NewAccessTokenResponse)
 async def refresh_token(
         refresh_token: str,
-        # db: AsyncSession = Depends(get_db), 
-    ):
-    
-    new_access_token = get_new_access_token(refresh_token)
+    ): 
+
+    new_access_token = await get_new_access_token(refresh_token)
 
     return new_access_token
 

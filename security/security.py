@@ -12,7 +12,7 @@ from models.users import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from schemas.auth import TokenResponse
+from schemas.auth import NewAccessTokenResponse, TokenResponse
 
 from dotenv import load_dotenv
 import os
@@ -68,9 +68,15 @@ async def get_tokens_pair(db, id):
 async def get_new_access_token(refresh_token: str):
 
     try:
-        payload = jwt.decode(refresh_token, os.getenv("SECRET_KEY"), algorithm=os.getenv("algorithm"))
+        payload = jwt.decode(refresh_token, os.getenv("SECRET_KEY"), algorithms=os.getenv("algorithm"))
+        new_access_token =  await create_access_token(payload)
+        new_refresh_token = await create_refresh_token(payload)
+        response = NewAccessTokenResponse(
+            access_token=new_access_token,
+            refresh_token=new_refresh_token,
+        )
 
-        return await create_access_token(payload)
+        return response
     
     except JWTError:
         raise HTTPException(
@@ -84,7 +90,7 @@ async def get_new_access_token(refresh_token: str):
 async def create_access_token(data: dict):
 
     payload = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=5) #1600
+    expire = datetime.now(timezone.utc) + timedelta(minutes=1) #1600
     payload.update({"exp": expire}) 
 
     return jwt.encode(payload, os.getenv("SECRET_KEY"), algorithm=os.getenv("algorithm"))
@@ -97,7 +103,7 @@ async def create_refresh_token(data: dict):
     expire = datetime.now(timezone.utc) + timedelta(days=7)
     payload.update({"exp": expire}) 
 
-    return jwt.encode(data, os.getenv("SECRET_KEY"), os.getenv("algorithm"))
+    return jwt.encode(payload, os.getenv("SECRET_KEY"), os.getenv("algorithm"))
 
 
 # Get Payload Of Token
