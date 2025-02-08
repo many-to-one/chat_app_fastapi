@@ -184,7 +184,6 @@ async def websocket_endpoint(
                             else:
                                 print(' ################ I"M HERE ################ ', message)
                                 print('################ token ################', token)
-                                # await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}, receiver_active: {is_active}")
                                 # Handle messaging
                                 new_message = Message(
                                     message=message, 
@@ -197,8 +196,18 @@ async def websocket_endpoint(
                                 await db.commit()
                                 await db.refresh(new_message)
 
-                                await manager.broadcast(f"Client #{sender_id} to #{receiver_id}: {message}, receiver_active: {is_active}")
-
+                                message_data = {
+                                    "info": "new_message",
+                                    "id": new_message.id,
+                                    "message": new_message.message,
+                                    "chat_id": new_message.chat_id,
+                                    "sender_id": new_message.user_id,
+                                    "read": new_message.read,
+                                    "created_at": new_message.created_at.isoformat(),  # Convert datetime to string
+                                    "receiver_id": receiver_id,
+                                    "is_active": is_active,
+                                }
+                                await manager.broadcast(json.dumps(message_data))
                         else:
                             await manager.broadcast("401 Unauthorized")
                             # await websocket.close(code=1008)  # Close WebSocket if unauthorized
