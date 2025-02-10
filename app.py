@@ -47,20 +47,20 @@ app.include_router(users.router)
 app.include_router(chat.router)
 
 
-REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = os.getenv("REDIS_PORT")
+# REDIS_HOST = os.getenv("REDIS_HOST")
+# REDIS_PORT = os.getenv("REDIS_PORT")
 
-redis_client = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), decode_responses=True)
+# redis_client = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), decode_responses=True)
 
-@app.post("/set/")
-async def set_value(key: str, value: str):
-    redis_client.set(key, value)
-    return {"message": f"Stored {key} = {value}"}
+# @app.post("/set/")
+# async def set_value(key: str, value: str):
+#     redis_client.set(key, value)
+#     return {"message": f"Stored {key} = {value}"}
 
-@app.get("/get/")
-async def get_value(key: str):
-    value = redis_client.get(key)
-    return {"key": key, "value": value}
+# @app.get("/get/")
+# async def get_value(key: str):
+#     value = redis_client.get(key)
+#     return {"key": key, "value": value}
 
 
 class ConnectionManager:
