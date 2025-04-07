@@ -22,7 +22,7 @@ class TokenResponse(BaseModel):
 
 class NewAccessTokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
+    # refresh_token: str
 
 
 class ChangePasswordForm(BaseModel):

@@ -10,7 +10,7 @@ from db.db import get_db
 from models.users import User
 from schemas.auth import NewAccessTokenResponse, TokenResponse, UserCreateForm, ChangePasswordForm
 from schemas.users import UserBase
-from security.security import get_new_access_token, get_password_hash, get_current_user, oauth2_scheme
+from security.security import get_current_user_with_cookies, get_new_access_token, get_password_hash, oauth2_scheme, get_current_user
 from orm.orm import OrmService
 
 
@@ -65,8 +65,9 @@ async def login(
     return login_user
 
 
-@router.get("/refresh_token", status_code=status.HTTP_200_OK, response_model=NewAccessTokenResponse)
+@router.post("/refresh_token", status_code=status.HTTP_200_OK, response_model=NewAccessTokenResponse)
 async def refresh_token(
+        response: Response,
         refresh_token: str,
     ): 
 
@@ -79,6 +80,7 @@ async def refresh_token(
 async def logout(
         response: Response,
         db: AsyncSession = Depends(get_db), 
+        # current_user: UserBase = Depends(get_current_user_with_cookies),
         current_user: UserBase = Depends(get_current_user)
     ):
     
@@ -99,6 +101,7 @@ async def chanage_password(
         # token: str = Depends(oauth2_scheme),
         db: AsyncSession = Depends(get_db), 
         current_user: UserBase = Depends(get_current_user)
+        # current_user: UserBase = Depends(get_current_user_with_cookies),
     ):
 
     hashed_password = get_password_hash(user_form.new_password)

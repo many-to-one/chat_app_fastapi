@@ -8,7 +8,7 @@ from db.db import get_db
 from models.users import User
 from schemas.auth import TokenResponse, UserCreateForm, UserLoginForm
 from schemas.users import UserBase
-from security.security import get_current_user, get_password_hash, oauth2_scheme
+from security.security import get_password_hash, oauth2_scheme, get_current_user_with_cookies, get_new_access_token, get_current_user
 from orm.orm import OrmService
 
 
@@ -22,6 +22,7 @@ async def user_profile(
         user_id: int,
         db: AsyncSession = Depends(get_db),
         current_user: UserBase = Depends(get_current_user)
+        # current_user: UserBase = Depends(get_current_user_with_cookies),
     ):
 
     __orm = OrmService(db)
@@ -33,20 +34,26 @@ async def user_profile(
 async def all_users(
     db: AsyncSession = Depends(get_db),
     current_user: UserBase = Depends(get_current_user)
+    # current_user: UserBase = Depends(get_current_user_with_cookies),
 ):
-    # Check if users are cached
-    if "all_users" in cache:
-        # print('//////////////// ALL USERS IN CASHE /////////////////')
-        return cache["all_users"]
+    __orm = OrmService(db)
+    all_users = await __orm.all(model=User, name='all_users')
 
-    else:
+    return all_users
 
-        # Fetch data from database if not in cache
-        __orm = OrmService(db)
-        all_users = await __orm.all(model=User, name='all_users')
+    # # Check if users are cached
+    # if "all_users" in cache:
+    #     # print('//////////////// ALL USERS IN CASHE /////////////////')
+    #     return cache["all_users"]
 
-        # Cache the data
-        cache["all_users"] = all_users
-        # print('//////////////// ALL USERS NOT IN CASHE /////////////////')
+    # else:
 
-        return all_users
+    #     # Fetch data from database if not in cache
+    #     __orm = OrmService(db)
+    #     all_users = await __orm.all(model=User, name='all_users')
+
+    #     # Cache the data
+    #     cache["all_users"] = all_users
+    #     # print('//////////////// ALL USERS NOT IN CASHE /////////////////')
+
+    #     return all_users

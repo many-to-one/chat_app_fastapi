@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import func
 
 from schemas.users import UserBase
-from security.security import get_current_user
+# from security.security import get_current_user
 from models.users import Chat, Message, chat_users
 from orm.orm import OrmService
 from routers import auth, users, chat
@@ -30,11 +30,12 @@ app = FastAPI()
 
 origins = [
     "http://localhost:8081",  # React app running locally
+    "http://localhost:3000"
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"], #origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -107,7 +108,7 @@ async def index(request: Request):
 
 
 
-@app.websocket("/ws/{client_id}/{sender_id}")
+@app.websocket("/ws/{client_id}/{sender_id}/hu")
 async def websocket_endpoint(
     websocket: WebSocket, 
     sender_id: int, 
@@ -123,19 +124,26 @@ async def websocket_endpoint(
         if current_user:
             print(' *********** WEBSOCKET INDEX CURRENT USER ID *********** ', current_user.id)
             await manager.connect(websocket, current_user.id)
+            message_data = {
+                    "is active": current_user.id,
+                    "sender_id": sender_id, 
+                    "client_id": client_id,
+                }
+            await manager.broadcast(json.dumps(message_data))
+            # is_active = await manager.is_user_online(data['receiver_id'])
 
             try:
                 while True:
 
                     try:
                         data = await websocket.receive_json()
-                        # print('SENDED DATA:', data)
+                        print('SENDED DATA:', data, "Type:", type(data))
 
                             # Broadcast "chat_onopen" message
                         if data["message"] == "chat_onopen":
                             await manager.broadcast(f"chat_onopen {data['sender_id']} is active")
                             is_active = await manager.is_user_online(data['receiver_id'])
-                            # print(' ################ chat_onopen is_active ################ ', is_active)
+                            print(' ################ chat_onopen is_active ################ ', is_active)
 
                         elif data["message"] == "receiver_active":
                             # print(' ################ receiver_active ################ ', data)
@@ -181,6 +189,19 @@ async def websocket_endpoint(
 
                                 obj = new_chat
 
+                                message_data = {
+                                    "info": "new_message",
+                                    "id": new_message.id,
+                                    "message": new_message.message,
+                                    "chat_id": new_message.chat_id,
+                                    "user_id": new_message.user_id,
+                                    "read": new_message.read,
+                                    "created_at": new_message.created_at.isoformat(),  # Convert datetime to string
+                                    "receiver_id": receiver_id,
+                                    "is_active": is_active,
+                                }
+                                await manager.broadcast(json.dumps(message_data))
+
                             else:
                                 print(' ################ I"M HERE ################ ', message)
                                 print('################ token ################', token)
@@ -201,7 +222,7 @@ async def websocket_endpoint(
                                     "id": new_message.id,
                                     "message": new_message.message,
                                     "chat_id": new_message.chat_id,
-                                    "sender_id": new_message.user_id,
+                                    "user_id": new_message.user_id,
                                     "read": new_message.read,
                                     "created_at": new_message.created_at.isoformat(),  # Convert datetime to string
                                     "receiver_id": receiver_id,
@@ -215,6 +236,12 @@ async def websocket_endpoint(
 
                     except WebSocketDisconnect:
                         print(f"WebSocket client_id {client_id} disconnected.")
+                        message_data = {
+                            "disconnected": True,
+                            "sender_id": sender_id, 
+                            "client_id": client_id,
+                        }
+                        await manager.broadcast(json.dumps(message_data))
                         manager.disconnect(websocket)
                         break
                     except Exception as e:
