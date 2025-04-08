@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import func
 
 from schemas.users import UserBase
-# from security.security import get_current_user
+from security.security import get_current_user
 from models.users import Chat, Message, chat_users
 from orm.orm import OrmService
 from routers import auth, users, chat

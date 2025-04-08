@@ -23,7 +23,7 @@ router = APIRouter(tags=["Chat"], prefix="/chat")
 @router.get("/all_chats", status_code=status.HTTP_200_OK, response_model=list[ChatBase])
 async def all_chats(
     db: AsyncSession = Depends(get_db),
-    current_user: UserBase = Depends(get_current_user),
+    # current_user: UserBase = Depends(get_current_user),
     # current_user: UserBase = Depends(get_current_user_with_cookies),
 ):
     result = await db.execute(
@@ -174,21 +174,24 @@ async def websocket_endpoint(
     websocket: WebSocket, 
     sender_id: int, 
     client_id: int,
-    # current_user: UserBase = Depends(get_current_user_with_cookies),
-    current_user: UserBase = Depends(get_current_user),
-    # token: str,
+    token: str,
+    current_user: UserBase = Depends(get_current_user_with_cookies),
+    # current_user: UserBase = Depends(get_current_user),
     # token: str = Depends(oauth2_scheme),
     # db: AsyncSession = Depends(get_db)
 ):
-    await websocket.accept()
+    # await websocket.accept()
+    
+    # current_user = get_current_user(token)
 
     if not current_user:
         print(' *********** no current_user *********** ')
     #     await websocket.close(code=1008)  # Policy violation or unauthorized
     #     return
-    # await websocket.accept()
+    await websocket.accept()
 
-    print(' *********** current_user *********** ', current_user)
+    print(' *********** current_user *********** ', current_user, token)
+    
 
     # Validate token and authenticate user
     # if token:

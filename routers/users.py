@@ -15,7 +15,7 @@ from orm.orm import OrmService
 router = APIRouter(tags=["Users"], prefix="/users")
 
 # In-memory cache with a max size of 1 and TTL of 10 minutes (600 seconds)
-cache = TTLCache(maxsize=1, ttl=600)
+# cache = TTLCache(maxsize=1, ttl=600)
 
 @router.get("/user_profile/{id}", status_code=status.HTTP_200_OK, response_model=UserBase)
 async def user_profile(
@@ -33,7 +33,7 @@ async def user_profile(
 @router.get("/all_users", status_code=status.HTTP_200_OK, response_model=list[UserBase])
 async def all_users(
     db: AsyncSession = Depends(get_db),
-    current_user: UserBase = Depends(get_current_user)
+    # current_user: UserBase = Depends(get_current_user)
     # current_user: UserBase = Depends(get_current_user_with_cookies),
 ):
     __orm = OrmService(db)
