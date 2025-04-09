@@ -169,28 +169,31 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+
 @router.websocket("/ws/{client_id}/{sender_id}")
 async def websocket_endpoint(
     websocket: WebSocket, 
     sender_id: int, 
     client_id: int,
     token: str,
-    current_user: UserBase = Depends(get_current_user_with_cookies),
+    # current_user: UserBase = Depends(get_current_user_with_cookies),
     # current_user: UserBase = Depends(get_current_user),
     # token: str = Depends(oauth2_scheme),
     # db: AsyncSession = Depends(get_db)
 ):
-    # await websocket.accept()
-    
-    # current_user = get_current_user(token)
 
-    if not current_user:
-        print(' *********** no current_user *********** ')
-    #     await websocket.close(code=1008)  # Policy violation or unauthorized
-    #     return
     await websocket.accept()
+    while True:
+    
+        current_user = get_current_user_with_cookies(token)
 
-    print(' *********** current_user *********** ', current_user, token)
+        if not current_user:
+            print(' *********** no current_user *********** ')
+        #     await websocket.close(code=1008)  # Policy violation or unauthorized
+        #     return
+        await websocket.accept()
+
+        print(' *********** current_user *********** ', current_user, token)
     
 
     # Validate token and authenticate user

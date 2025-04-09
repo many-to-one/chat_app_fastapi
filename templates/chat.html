@@ -19,7 +19,8 @@
         <script>
             var client_id = Date.now()
             document.querySelector("#ws-id").textContent = client_id;
-            var ws = new WebSocket(`ws://localhost:8005/ws/${client_id}/1`);
+            // var ws = new WebSocket(`ws://localhost:8005/ws/${client_id}/1`);
+            var ws = new WebSocket(`ws://localhost:8005/ws`);
             // document.querySelector("#userId").textContent = client_id;
             // var ws = new WebSocket(`ws://localhost:8005/ws`);
             ws.onmessage = function(event) {
@@ -32,8 +33,8 @@
             function sendMessage(event) {
                 var input = document.getElementById("messageText")
                 var messageData = {
-                    sender_id: 1, // parseInt(senderId),  // Convert to integer if necessary
-                    receiver_id: 2, // parseInt(receiverId),  // Convert to integer if necessary
+                    sender_id: 10, // parseInt(senderId),  // Convert to integer if necessary
+                    receiver_id: 9, // parseInt(receiverId),  // Convert to integer if necessary
                     message: input.value
                 };
                 // ws.send(input.value)

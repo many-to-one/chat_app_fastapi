@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import func
 
 from schemas.users import UserBase
-from security.security import get_current_user
+from security.security import get_current_user, get_token_payload
 from models.users import Chat, Message, chat_users
 from orm.orm import OrmService
 from routers import auth, users, chat
@@ -90,7 +90,11 @@ class ConnectionManager:
         if message.startswith == 'chat_onclose':
             await websocket.send_text(message)
         else:
-            await websocket.send_text(message)
+            # await websocket.send_text(message)
+            try:
+                await websocket.send_text(message)
+            except RuntimeError:
+                print("WebSocket closed, cannot send message.")
 
     async def broadcast(self, message: str):
         for connection in self.active_connections.values():
@@ -105,6 +109,144 @@ manager = ConnectionManager()
 @app.get('/', response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse('chat.html', {"request": request})
+
+
+
+@app.websocket("/ws/{sender_id}/{client_id}/{token}")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    sender_id: int, 
+    client_id: int,
+    token: str,
+    db: AsyncSession = Depends(get_db)
+    ):
+
+    user = await get_token_payload(token)
+
+    if user['id'] == sender_id:
+        await manager.connect(websocket, user['id'])
+        # await websocket.accept()
+        message_data = {
+                 "is active": user['id'],
+                 "sender_id": sender_id, 
+                 "client_id": client_id,
+             }
+        await manager.broadcast(json.dumps(message_data), websocket)
+        while True:
+            try:
+                data = await websocket.receive_json()
+                print('SENDED DATA:', data, "Type:", type(data))
+
+                sender_id = data["sender_id"]
+                receiver_id = data["receiver_id"]
+                message = data["message"]
+
+
+                """Check if user is online to mark message as read"""
+
+                is_active = await manager.is_user_online(receiver_id)
+
+
+                """Check if chat exists"""
+
+                result = await db.execute(
+                                select(Chat)
+                                .join(chat_users)
+                                .filter(chat_users.c.user_id.in_([sender_id, receiver_id]))
+                                .group_by(Chat.id)
+                                .having(func.count(chat_users.c.user_id) == 2)  # Ensure both users exist in the same chat
+                                .options(selectinload(Chat.messages))
+                            )
+                obj = result.scalars().first()
+
+                
+                """Create new chat if it doesn't exist"""
+
+                if obj is None:
+                    chat_form = {
+                        "sender_id": sender_id,
+                        "receiver_id": receiver_id,
+                        "messages": [Message(message=message, read=is_active)]
+                    }
+                    __orm = OrmService(db)
+                    new_chat = await __orm.create(model=Chat, form=chat_form)
+                    await db.execute(
+                        chat_users.insert().values([
+                            {"chat_id": new_chat.id, "user_id": sender_id},
+                            {"chat_id": new_chat.id, "user_id": receiver_id}
+                        ])
+                    )
+                    await db.commit()
+
+                    obj = new_chat
+
+                    new_message = Message(
+                        message=message, 
+                        chat_id=obj.id,
+                        user_id=sender_id,
+                        read=is_active,
+                        created_at=datetime.utcnow()
+                        )
+                    db.add(new_message)
+                    await db.commit()
+                    await db.refresh(new_message)
+
+                    message_data = {
+                        "info": "new_message",
+                        "id": new_message.id,
+                        "message": new_message.message,
+                        "chat_id": new_message.chat_id,
+                        "user_id": new_message.user_id,
+                        "read": new_message.read,
+                        "created_at": new_message.created_at.isoformat(),  # Convert datetime to string
+                        "receiver_id": receiver_id,
+                        "is_active": is_active,
+                    }
+                    await manager.broadcast(json.dumps(message_data))
+
+                else:
+
+                    """ If chat exists - add new message """
+
+                    new_message = Message(
+                        message=message, 
+                        chat_id=obj.id,
+                        user_id=sender_id,
+                        read=is_active,
+                        created_at=datetime.utcnow()
+                        )
+                    db.add(new_message)
+                    await db.commit()
+                    await db.refresh(new_message)
+
+                    message_data = {
+                        "info": "new_message",
+                        "id": new_message.id,
+                        "message": new_message.message,
+                        "chat_id": new_message.chat_id,
+                        "user_id": new_message.user_id,
+                        "read": new_message.read,
+                        "created_at": new_message.created_at.isoformat(),  # Convert datetime to string
+                        "receiver_id": receiver_id,
+                        "is_active": is_active,
+                    }
+                    await manager.broadcast(json.dumps(message_data), websocket)
+                
+            except WebSocketDisconnect:
+                print(f"WebSocket client_id {client_id} disconnected.")
+                message_data = {
+                    "disconnected": True,
+                    "sender_id": sender_id, 
+                    "client_id": client_id,
+                }
+                await manager.broadcast(json.dumps(message_data), websocket)
+                manager.disconnect(websocket)
+                break
+            except Exception as e:
+                print(f"Error in WebSocket: {e}")
+                await manager.broadcast("401 Unauthorized")
+                await websocket.close()
+                break
 
 
 
@@ -364,8 +506,7 @@ async def websocket_endpoint(
     else:
         await websocket.close(code=1008)  # Close WebSocket if no token
         await users_manager.broadcast("No token")
-        return
-
+        return  
     
 
 

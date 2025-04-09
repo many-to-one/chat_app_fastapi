@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from db.db import get_db
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
+from jose import JWTError, jwt, ExpiredSignatureError
 # from .settings import settings
 from passlib.context import CryptContext
 # from fastapi.security import HTTPBearer
@@ -91,7 +91,7 @@ async def get_new_access_token(refresh_token: str):
 async def create_access_token(data: dict):
 
     payload = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=50) #1600
+    expire = datetime.now(timezone.utc) + timedelta(minutes=1) #1600
     payload.update({"exp": expire}) 
 
     return jwt.encode(payload, os.getenv("SECRET_KEY"), algorithm=os.getenv("algorithm"))
@@ -108,18 +108,43 @@ async def create_refresh_token(data: dict):
 
 
 # Get Payload Of Token
-async def get_token_payload(token: str)-> dict:
+async def get_token_payload(token: str) -> dict:
     try:
-        tkn_pld = jwt.decode(token, os.getenv("SECRET_KEY"), [os.getenv("algorithm")])
-        # print('***************** tkn_pld *****************', tkn_pld)
-        return jwt.decode(token, os.getenv("SECRET_KEY"), [os.getenv("algorithm")])
+        # Decode and enforce expiration
+        tkn_pld = jwt.decode(
+            token,
+            os.getenv("SECRET_KEY"),
+            algorithms=[os.getenv("algorithm")],
+            options={"verify_exp": True},  # Ensure "exp" is required
+        )
+        return tkn_pld
+
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired.",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
 
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token.",
+            detail="Invalid token.",
             headers={"WWW-Authenticate": "Bearer"}
         )
+    
+# async def get_token_payload(token: str)-> dict:
+#     try:
+#         tkn_pld = jwt.decode(token, os.getenv("SECRET_KEY"), [os.getenv("algorithm")])
+#         # print('***************** tkn_pld *****************', tkn_pld)
+#         return jwt.decode(token, os.getenv("SECRET_KEY"), [os.getenv("algorithm")])
+
+#     except JWTError:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail=f"Invalid token.",
+#             headers={"WWW-Authenticate": "Bearer"}
+#         )
     
 
 # token: str = Depends(oauth2_scheme) for Swagger Authorize
@@ -144,8 +169,9 @@ async def check_admin(token: str = Depends(oauth2_scheme), db: AsyncSession = De
         raise HTTPException(status_code=403, detail="Admin role required")
     
 
-async def get_current_user_with_cookies(request: Request, db: AsyncSession = Depends(get_db)) -> User:
+async def get_current_user_with_cookies(request: Request, token: str, db: AsyncSession = Depends(get_db)) -> User:
 
+    print('get_current_user_with_cookies token -------------------', token)
     access_token = request.cookies.get("access_token") 
     refresh_token = request.cookies.get("refresh_token")
 
