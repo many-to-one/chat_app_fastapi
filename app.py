@@ -114,91 +114,10 @@ async def index(request: Request):
 
 
 
-
-class MainConnectionManager:
-    def __init__(self):
-        # Ensure this is a dictionary, not a list
-        self.active_connections: dict[int, WebSocket] = {}
-
-    async def connect(self, websocket: WebSocket, chat_id: int):
-        await websocket.accept()
-        self.active_connections[chat_id] = websocket
-        # self.active_connections[user_id] = websocket
-        print('************* MAIN  WEBSOCCET IS CONNECTED ***************')
-
-    def disconnect(self, websocket: WebSocket):
-        # pass
-        user_id = next((uid for uid, ws in self.active_connections.items() if ws == websocket), None)
-        if user_id:
-            print(f'************* MAIN  WEBSOCCET {user_id} IS DISCONNECTED ***************')
-            del self.active_connections[user_id]
-
-
-    async def is_user_online(self, user_id: str) -> bool:
-        return user_id in self.active_connections
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        # if message.startswith == 'chat_onopen':
-        #     await websocket.send_text(message)
-        # if message.startswith == 'chat_onclose':
-        #     await websocket.send_text(message)
-        # else:
-            try:
-                await websocket.send_text(message)
-            except RuntimeError:
-                print("WebSocket closed, cannot send message.")
-
-    """Here is the proble: when the user close the chat, I've got a disconnect error even if it connected again. Solve it"""
-    async def broadcast(self, message: str):
-        for connection in self.active_connections.values():
-            await connection.send_text(message)
-
-    def get_connection(self, user_id: int) -> WebSocket | None:
-        return self.active_connections.get(user_id)
-
-main_manager = MainConnectionManager()
-
-
-
 @app.websocket("/ws/{sender_id}/{token}")
 async def websocket_endpoint(
     websocket: WebSocket,
     sender_id: int, 
-    token: str,
-    db: AsyncSession = Depends(get_db)
-    ):
-    
-    user = await get_token_payload(token)
-
-    if user['id'] == sender_id:
-        await main_manager.connect(websocket, user['id'])
-        message_data = {
-                 "is active": user['id'],
-                 "sender_id": sender_id, 
-             }
-        print('************* MAIN  WEBSOCCET IS CONNECTED ***************', user)
-        await main_manager.broadcast(json.dumps(message_data))
-        # await main_manager.send_personal_message(json.dumps(message_data), websocket)
-
-        while True:
-            try:
-                data = await websocket.receive_json()
-                print('SENDED DATA MAIN:', data, "Type:", type(data))
-            
-            except Exception as e:
-                print(f"Error in WebSocket: {e}")
-                await manager.broadcast("401 Unauthorized")
-                await websocket.close()
-                break
-
-
-
-
-@app.websocket("/ws/{sender_id}/{client_id}/{token}")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    sender_id: int, 
-    client_id: int,
     token: str,
     db: AsyncSession = Depends(get_db)
     ):
@@ -207,11 +126,10 @@ async def websocket_endpoint(
 
     if user['id'] == sender_id:
         await manager.connect(websocket, user['id'])
-        # await websocket.accept()
         message_data = {
-                 "is active": user['id'],
-                 "sender_id": sender_id, 
-                 "client_id": client_id,
+                "is active": user['id'],
+                "sender_id": sender_id, 
+                "message": f"{user['id']} is active",
              }
         await manager.broadcast(json.dumps(message_data))
         while True:
@@ -285,7 +203,7 @@ async def websocket_endpoint(
                         "is_active": is_active,
                     }
                     await manager.broadcast(json.dumps(message_data))
-                    await main_manager.broadcast(json.dumps(message_data))
+                    # await main_manager.broadcast(json.dumps(message_data))
 
                 else:
 
@@ -314,7 +232,7 @@ async def websocket_endpoint(
                         "is_active": is_active,
                     }
                     await manager.broadcast(json.dumps(message_data))
-                    await main_manager.broadcast(json.dumps(message_data))
+                    # await main_manager.broadcast(json.dumps(message_data))
                 
             # except WebSocketDisconnect:
             #     print(f"WebSocket client_id {client_id} disconnected.")
@@ -498,130 +416,8 @@ async def websocket_endpoint(
 
 
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy.future import select
-import json
-
-
-class ConnectionUsersManager:
-    def __init__(self):
-        # Ensure this is a dictionary, not a list
-        self.active_connections: dict[int, WebSocket] = {}
-
-    async def connect(self, websocket: WebSocket, chat_id: int):
-        await websocket.accept()
-        self.active_connections[chat_id] = websocket
-        # self.active_connections[user_id] = websocket
-        print('************* USERS HOMEPAGE WEBSOCCET IS CONNECTED ***************')
-
-    def disconnect(self, websocket: WebSocket):
-        user_id = next((uid for uid, ws in self.active_connections.items() if ws == websocket), None)
-        if user_id:
-            del self.active_connections[user_id]
-
-
-    async def is_user_online(self, user_id: str) -> bool:
-        return user_id in self.active_connections
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        if message.startswith == 'chat_onopen':
-            await websocket.send_text(message)
-        if message.startswith == 'chat_onclose':
-            await websocket.send_text(message)
-        else:
-            await websocket.send_text(message)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections.values():
-            await connection.send_text(message)
-
-    def get_connection(self, user_id: int) -> WebSocket | None:
-        return self.active_connections.get(user_id)
-
-users_manager = ConnectionUsersManager()
-
-# All chats of user
-@app.websocket("/ws/")
-async def websocket_endpoint(
-    websocket: WebSocket, 
-    token: str, 
-    db: AsyncSession = Depends(get_db),
-):
-
-    # Validate token and authenticate user
-    if token:
-        current_user = await get_current_user(token, db)
-
-        if current_user:
-            print(' *********** WEBSOCKET CURRENT USER ID *********** ', current_user.id)
-            await users_manager.connect(websocket, current_user.id)
-
-            try:
-                while True:
-                    # Wait for a message or event from the client
-                    data = await websocket.receive_json()  # Expecting JSON with sender, receiver, and message
-                    current_user = await get_current_user(data["access_token"],  db)
-
-                    if current_user:
-                        print(' ************** RECEIVED FOR INDEX DATA ************** ', data)
-                        await users_manager.broadcast(f"{data}")
-                    else:
-                        await users_manager.broadcast("401 Unauthorized")
-                        # await websocket.close(code=1008)  # Close WebSocket if unauthorized
-                        # return
-
-
-            except WebSocketDisconnect:
-                users_manager.disconnect(websocket)
-                await users_manager.broadcast(json.dumps({
-                    "message": f"{current_user.id} left chats area"
-                }))
-
-            except Exception as e:
-                print("WebSocket Error:", e)
-                await users_manager.broadcast("401 Unauthorized")
-                await websocket.close(code=1011)
-
-        else:
-            await users_manager.broadcast("401 Unauthorized")
-            # await websocket.close(code=1008)  # Close WebSocket if unauthorized
-            # return
-    else:
-        await websocket.close(code=1008)  # Close WebSocket if no token
-        await users_manager.broadcast("No token")
-        return  
-    
 
 
 
-# @app.websocket("/ws/")
-# async def websocket_endpoint(
-#     websocket: WebSocket, 
-#     token: str, 
-#     db: AsyncSession = Depends(get_db),
-# ):
-
-#     if token:
-#         print(' *********** WEBSOCKET TOKEN 2 *********** ', token)
-#         current_user = await get_current_user(token, db)
-
-#         if current_user:
-#             print(' *********** WEBSOCKET CURRENT USER ID *********** ', current_user.id)
-#             await manager.connect(websocket, current_user.id)
-#     else:
-#         manager.disconnect(websocket)
-#         await manager.broadcast(f"Unauthtorized")
 
 
-#     try:
-#         while True:
-#             result = await db.execute(
-#                 select(Message).
-#                 where(Message.user_id == current_user.id)
-#             )
-#             obj = result.scalars().first()
-#             print(' ********* USERS MESSAGES ********* ', obj)
-#     except WebSocketDisconnect:
-#         manager.disconnect(websocket)
-#         await manager.broadcast(f"{current_user.id} left chats area")
